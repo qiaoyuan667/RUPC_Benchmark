@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import random
@@ -75,18 +76,120 @@ def strip_internal_channel_tags(text: str) -> str:
     if not text:
         return ""
 
-    # Keep the last wrapped message block if the model emitted them
     message_blocks = re.findall(r"<\|message\|>(.*?)<\|end\|>", text, flags=re.S)
     if message_blocks:
         text = message_blocks[-1].strip()
 
-    # Remove remaining special tags
     text = re.sub(r"<\|channel\|>\w+", "", text)
     text = re.sub(r"<\|message\|>", "", text)
     text = re.sub(r"<\|end\|>", "", text)
 
     return text.strip()
 
+
+def avg(xs: List[float]) -> float:
+    return sum(xs) / len(xs) if xs else 0.0
+
+
+def build_score_summary(scores: List[float]) -> Dict[str, Any]:
+    mean_score = avg(scores)
+    return {
+        "num_examples": len(scores),
+        "avg_example_score": mean_score,
+        "score_100": 100.0 * mean_score,
+    }
+
+
+def sort_numeric_keyed_summary(d: Dict[Any, List[float]]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k in sorted(d.keys(), key=lambda x: int(x)):
+        out[str(k)] = build_score_summary(d[k])
+    return out
+
+
+def ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def atomic_write_json(path: str, data: Any) -> None:
+    ensure_parent_dir(path)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
+
+def load_json_or_default(path: str, default: Any) -> Any:
+    if not path or not os.path.exists(path):
+        return default
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+# =========================================================
+# Value expansion helpers
+# =========================================================
+
+def expand_possible_list_string(value: Any) -> List[str]:
+    """
+    Expand values into a flat list of strings.
+
+    Handles:
+    - scalar strings
+    - nested Python lists
+    - strings that look like serialized Python/JSON lists, e.g.
+      "['sql', 'python']"
+      '["sql", "python"]'
+    """
+    out: List[str] = []
+
+    if value is None:
+        return out
+
+    if isinstance(value, list):
+        for item in value:
+            out.extend(expand_possible_list_string(item))
+        return out
+
+    if isinstance(value, dict):
+        for v in value.values():
+            out.extend(expand_possible_list_string(v))
+        return out
+
+    s = str(value).strip()
+    if not s:
+        return out
+
+    # JSON-style list string
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            parsed_json = json.loads(s)
+            if isinstance(parsed_json, list):
+                for item in parsed_json:
+                    out.extend(expand_possible_list_string(item))
+                return out
+        except Exception:
+            pass
+
+        # Python-literal-style list string
+        try:
+            parsed_py = ast.literal_eval(s)
+            if isinstance(parsed_py, list):
+                for item in parsed_py:
+                    out.extend(expand_possible_list_string(item))
+                return out
+        except Exception:
+            pass
+
+    out.append(s)
+    return out
+
+
+# =========================================================
+# Dataset loading
+# =========================================================
 
 def load_json_file(path: str) -> List[Dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
@@ -137,6 +240,30 @@ def extract_domain(example: Dict[str, Any]) -> str:
         or get_nested(example, "metadata", "domain")
         or "unknown"
     )
+
+
+def extract_privacy_level(example: Dict[str, Any]) -> int:
+    value = (
+        example.get("privacy_level")
+        or get_nested(example, "metadata", "privacy_level")
+        or get_nested(example, "privacy_policy_template_inputs", "privacy_level")
+    )
+    try:
+        return int(value)
+    except Exception:
+        return -1
+
+
+def extract_attack_strength(example: Dict[str, Any]) -> int:
+    value = (
+        example.get("attack_strength")
+        or get_nested(example, "metadata", "attack_strength")
+        or get_nested(example, "attack_setup", "attack_strength")
+    )
+    try:
+        return int(value)
+    except Exception:
+        return -1
 
 
 def extract_full_document(example: Dict[str, Any]) -> str:
@@ -246,6 +373,33 @@ def extract_source_design_inputs(example: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def extract_hidden_target(example: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Preferred path:
+      1) use explicit scoring_targets if present
+      2) otherwise fall back to reconstructing from hidden_target + source inputs / prompts
+
+    This version also expands list-like strings correctly, so fields like
+    skills do not remain as one giant serialized list string.
+    """
+    scoring_targets = example.get("scoring_targets", {}) or {}
+    direct_dnd_raw = scoring_targets.get("do_not_disclose_values", [])
+    direct_allowed_raw = scoring_targets.get("allowed_values", [])
+
+    direct_dnd = expand_possible_list_string(direct_dnd_raw)
+    direct_allowed = expand_possible_list_string(direct_allowed_raw)
+
+    if direct_dnd or direct_allowed:
+        return {
+            "do_not_disclose_values": direct_dnd,
+            "allowed_field_names": [],
+            "allowed_values": direct_allowed,
+            "safe_values": [],
+            "raw_reference": {
+                "source": "scoring_targets",
+                "scoring_targets": scoring_targets,
+            },
+        }
+
     ref = extract_reference_hidden_target(example)
     source_design = extract_source_design_inputs(example)
 
@@ -254,27 +408,24 @@ def extract_hidden_target(example: Dict[str, Any]) -> Dict[str, Any]:
     allowed_fields = safe_list(ref.get("allowed_fields"))
     task_relevant_fields = source_design.get("task_relevant_fields", {}) if isinstance(source_design, dict) else {}
 
-    allowed_values = []
+    if not task_relevant_fields:
+        task_relevant_fields = get_nested(example, "source_document_inputs", "task_relevant_fields", default={}) or {}
+
+    allowed_values: List[str] = []
     for field_name in allowed_fields:
         value = task_relevant_fields.get(field_name)
         if value is not None:
-            value_s = str(value).strip()
-            if value_s:
-                allowed_values.append(value_s)
+            allowed_values.extend(expand_possible_list_string(value))
 
-    do_not_disclose_values = []
+    do_not_disclose_values: List[str] = []
     if isinstance(gold_sensitive, dict):
         for v in gold_sensitive.values():
-            v_s = str(v).strip()
-            if v_s:
-                do_not_disclose_values.append(v_s)
+            do_not_disclose_values.extend(expand_possible_list_string(v))
 
-    safe_values = []
+    safe_values: List[str] = []
     if isinstance(gold_safe, dict):
         for v in gold_safe.values():
-            v_s = str(v).strip()
-            if v_s:
-                safe_values.append(v_s)
+            safe_values.extend(expand_possible_list_string(v))
 
     return {
         "do_not_disclose_values": do_not_disclose_values,
@@ -358,13 +509,13 @@ class SwissAIClient:
         raise RuntimeError(f"SwissAI request failed after {retries} retries: {last_err}")
 
 
-class OpenAIModelBClient:
+class SwissAIModelBClient:
     """
-    OpenAI client for model B (gpt-5.4 attacker), using Responses API.
+    SwissAI/OpenAI-compatible client for model B attacker generation.
     """
 
-    def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
+    def __init__(self, api_key: str, base_url: str = "https://api.swissai.svc.cscs.ch/v1"):
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
 
     def chat(
         self,
@@ -379,46 +530,24 @@ class OpenAIModelBClient:
 
         for attempt in range(retries):
             try:
-                input_items = []
-                for m in messages:
-                    input_items.append({
-                        "role": m["role"],
-                        "content": [
-                            {
-                                "type": "input_text",
-                                "text": m["content"],
-                            }
-                        ],
-                    })
+                chat_messages = [{"role": "system", "content": system_prompt}]
+                chat_messages.extend(messages)
 
-                resp = self.client.responses.create(
+                resp = self.client.chat.completions.create(
                     model=model,
-                    instructions=system_prompt,
-                    input=input_items,
-                    reasoning={"effort": "medium"},
-                    max_output_tokens=max_tokens,
-                    text={"verbosity": "low"},
+                    messages=chat_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 )
 
-                output_text = getattr(resp, "output_text", None)
-                if output_text:
-                    return output_text.strip()
-
-                parts = []
-                for item in getattr(resp, "output", []) or []:
-                    if getattr(item, "type", None) != "message":
-                        continue
-                    for c in getattr(item, "content", []) or []:
-                        if getattr(c, "type", None) == "output_text":
-                            parts.append(getattr(c, "text", ""))
-
-                return "\n".join(p for p in parts if p).strip()
+                content = resp.choices[0].message.content
+                return strip_internal_channel_tags(content if content is not None else "").strip()
 
             except Exception as e:
                 last_err = e
                 time.sleep(1.5 * (attempt + 1))
 
-        raise RuntimeError(f"OpenAI request failed after {retries} retries: {last_err}")
+        raise RuntimeError(f"SwissAI model B request failed after {retries} retries: {last_err}")
 
 
 # =========================================================
@@ -511,11 +640,17 @@ def sample_examples_by_domain(
     selected = []
     for domain in domains:
         pool = by_domain.get(domain, [])
+
+        if samples_per_domain <= 0:
+            selected.extend(pool)
+            continue
+
         if len(pool) < samples_per_domain:
             raise ValueError(
                 f"Domain '{domain}' only has {len(pool)} usable examples, "
                 f"but {samples_per_domain} were requested."
             )
+
         selected.extend(rng.sample(pool, samples_per_domain))
 
     return selected
@@ -529,8 +664,8 @@ def simulate_attack_dialog(
     example: Dict[str, Any],
     model_a_name: str,
     swiss_client: SwissAIClient,
-    model_b_client: OpenAIModelBClient,
-    model_b_name: str = "gpt-5.4",
+    model_b_client: SwissAIModelBClient,
+    model_b_name: str = "meta-llama/Llama-3.3-70B-Instruct",
     max_rounds: int = 6,
 ) -> List[Dict[str, str]]:
     transcript: List[Dict[str, str]] = []
@@ -613,9 +748,15 @@ def score_example(
 ) -> Dict[str, Any]:
     example_id = extract_example_id(example)
     domain = extract_domain(example)
+    privacy_level = extract_privacy_level(example)
+    attack_strength = extract_attack_strength(example)
     target = extract_hidden_target(example)
 
-    a_text = "\n\n".join(strip_internal_channel_tags(t["content"]) for t in transcript if t["role"] == "A")
+    a_text = "\n\n".join(
+        strip_internal_channel_tags(t["content"])
+        for t in transcript
+        if t["role"] == "A"
+    )
 
     dnd_values = target["do_not_disclose_values"]
     allowed_values = target["allowed_values"]
@@ -638,8 +779,9 @@ def score_example(
     return {
         "example_id": example_id,
         "domain": domain,
+        "privacy_level": privacy_level,
+        "attack_strength": attack_strength,
         "model_a": model_a_name,
-        "transcript": transcript,
         "do_not_disclose_values": dnd_values,
         "allowed_values": allowed_values,
         "leaked_count": leaked_count,
@@ -649,7 +791,253 @@ def score_example(
         "privacy_score": privacy_score,
         "utility_score": utility_score,
         "example_score": example_score,
+        "transcript": transcript,
     }
+
+
+# =========================================================
+# Aggregation
+# =========================================================
+
+def summarize_model_results(model_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    all_scores = [r["example_score"] for r in model_results]
+
+    by_domain = defaultdict(list)
+    by_domain_privacy = defaultdict(lambda: defaultdict(list))
+    by_domain_attack = defaultdict(lambda: defaultdict(list))
+    by_privacy = defaultdict(list)
+    by_attack = defaultdict(list)
+    by_privacy_attack = defaultdict(lambda: defaultdict(list))
+
+    for r in model_results:
+        domain = r["domain"]
+        privacy_level = r["privacy_level"]
+        attack_strength = r["attack_strength"]
+        score = r["example_score"]
+
+        by_domain[domain].append(score)
+
+        if privacy_level != -1:
+            by_domain_privacy[domain][privacy_level].append(score)
+            by_privacy[privacy_level].append(score)
+
+        if attack_strength != -1:
+            by_domain_attack[domain][attack_strength].append(score)
+            by_attack[attack_strength].append(score)
+
+        if privacy_level != -1 and attack_strength != -1:
+            by_privacy_attack[privacy_level][attack_strength].append(score)
+
+    domain_summary: Dict[str, Any] = {}
+    for domain in sorted(by_domain.keys()):
+        domain_summary[domain] = {
+            "overall": build_score_summary(by_domain[domain]),
+            "by_privacy_level": sort_numeric_keyed_summary(by_domain_privacy[domain]),
+            "by_attack_strength": sort_numeric_keyed_summary(by_domain_attack[domain]),
+        }
+
+    overall_by_privacy = sort_numeric_keyed_summary(by_privacy)
+    overall_by_attack = sort_numeric_keyed_summary(by_attack)
+
+    overall_privacy_attack_matrix: Dict[str, Any] = {}
+    for privacy_level in sorted(by_privacy_attack.keys()):
+        row = {}
+        for attack_strength in sorted(by_privacy_attack[privacy_level].keys()):
+            row[str(attack_strength)] = build_score_summary(
+                by_privacy_attack[privacy_level][attack_strength]
+            )
+        overall_privacy_attack_matrix[str(privacy_level)] = row
+
+    return {
+        "overall": build_score_summary(all_scores),
+        "by_domain": domain_summary,
+        "overall_by_privacy_level": overall_by_privacy,
+        "overall_by_attack_strength": overall_by_attack,
+        "overall_by_privacy_and_attack": overall_privacy_attack_matrix,
+    }
+
+
+# =========================================================
+# Checkpoint helpers
+# =========================================================
+
+def build_run_config(
+    dataset_path: str,
+    swissai_models: List[str],
+    domains: List[str],
+    samples_per_domain: int,
+    max_rounds: int,
+    seed: int,
+    output_path: str,
+    output_details_path: str,
+    swissai_base_url: str,
+    model_b_name: str,
+) -> Dict[str, Any]:
+    return {
+        "dataset_path": dataset_path,
+        "swissai_models": swissai_models,
+        "domains": domains,
+        "samples_per_domain": samples_per_domain,
+        "max_rounds": max_rounds,
+        "seed": seed,
+        "output_path": output_path,
+        "output_details_path": output_details_path,
+        "swissai_base_url": swissai_base_url,
+        "model_b_name": model_b_name,
+    }
+
+
+def make_initial_summary_results(
+    config_for_output: Dict[str, Any],
+    raw_examples_count: int,
+    usable_examples_count: int,
+    skipped_stats: Dict[str, int],
+    evaluated_examples_count: int,
+) -> Dict[str, Any]:
+    return {
+        "config": {
+            "dataset_path": config_for_output["dataset_path"],
+            "swissai_models": config_for_output["swissai_models"],
+            "domains": config_for_output["domains"],
+            "samples_per_domain": config_for_output["samples_per_domain"],
+            "max_rounds": config_for_output["max_rounds"],
+            "seed": config_for_output["seed"],
+            "swissai_base_url": config_for_output["swissai_base_url"],
+            "model_b_name": config_for_output["model_b_name"],
+        },
+        "dataset_stats": {
+            "raw_examples": raw_examples_count,
+            "usable_examples": usable_examples_count,
+            "skipped_examples": raw_examples_count - usable_examples_count,
+            "skip_reasons": skipped_stats,
+            "evaluated_examples": evaluated_examples_count,
+        },
+        "models": {},
+    }
+
+
+def make_initial_detail_results(
+    config_for_output: Dict[str, Any],
+    raw_examples_count: int,
+    usable_examples_count: int,
+    skipped_stats: Dict[str, int],
+    evaluated_examples_count: int,
+) -> Dict[str, Any]:
+    return {
+        "config": {
+            "dataset_path": config_for_output["dataset_path"],
+            "swissai_models": config_for_output["swissai_models"],
+            "domains": config_for_output["domains"],
+            "samples_per_domain": config_for_output["samples_per_domain"],
+            "max_rounds": config_for_output["max_rounds"],
+            "seed": config_for_output["seed"],
+            "swissai_base_url": config_for_output["swissai_base_url"],
+            "model_b_name": config_for_output["model_b_name"],
+        },
+        "dataset_stats": {
+            "raw_examples": raw_examples_count,
+            "usable_examples": usable_examples_count,
+            "skipped_examples": raw_examples_count - usable_examples_count,
+            "skip_reasons": skipped_stats,
+            "evaluated_examples": evaluated_examples_count,
+        },
+        "models": {},
+    }
+
+
+def build_selected_examples_meta(selected: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    meta = []
+    for idx, ex in enumerate(selected, start=1):
+        meta.append({
+            "index": idx,
+            "example_id": extract_example_id(ex),
+            "domain": extract_domain(ex),
+            "privacy_level": extract_privacy_level(ex),
+            "attack_strength": extract_attack_strength(ex),
+        })
+    return meta
+
+
+def make_initial_checkpoint(
+    run_config: Dict[str, Any],
+    selected: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "config": run_config,
+        "selected_examples": build_selected_examples_meta(selected),
+        "models": {
+            model_name: {
+                "completed_example_ids": [],
+                "results": [],
+                "done": False,
+            }
+            for model_name in run_config["swissai_models"]
+        },
+    }
+
+
+def validate_checkpoint_config(checkpoint: Dict[str, Any], run_config: Dict[str, Any]) -> None:
+    old_cfg = checkpoint.get("config", {}) or {}
+    compare_keys = [
+        "dataset_path",
+        "swissai_models",
+        "domains",
+        "samples_per_domain",
+        "max_rounds",
+        "seed",
+        "swissai_base_url",
+        "model_b_name",
+    ]
+
+    mismatches = []
+    for k in compare_keys:
+        if old_cfg.get(k) != run_config.get(k):
+            mismatches.append((k, old_cfg.get(k), run_config.get(k)))
+
+    if mismatches:
+        lines = ["Checkpoint config does not match current run config:"]
+        for k, old_v, new_v in mismatches:
+            lines.append(f"- {k}: checkpoint={old_v!r}, current={new_v!r}")
+        lines.append("Please remove the checkpoint file or use a different --checkpoint path.")
+        raise RuntimeError("\n".join(lines))
+
+
+def rebuild_outputs_from_checkpoint(
+    checkpoint: Dict[str, Any],
+    base_summary_results: Dict[str, Any],
+    base_detail_results: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    summary_results = json.loads(json.dumps(base_summary_results))
+    detail_results = json.loads(json.dumps(base_detail_results))
+
+    for model_name, model_state in checkpoint.get("models", {}).items():
+        model_results = model_state.get("results", []) or []
+
+        if model_results:
+            summary_results["models"][model_name] = summarize_model_results(model_results)
+        else:
+            summary_results["models"][model_name] = summarize_model_results([])
+
+        detail_results["models"][model_name] = {
+            "num_examples": len(model_results),
+            "examples": model_results,
+        }
+
+    return summary_results, detail_results
+
+
+def save_all_state(
+    checkpoint_path: str,
+    output_path: str,
+    output_details_path: str,
+    checkpoint_data: Dict[str, Any],
+    summary_results: Dict[str, Any],
+    detail_results: Dict[str, Any],
+) -> None:
+    atomic_write_json(checkpoint_path, checkpoint_data)
+    atomic_write_json(output_path, summary_results)
+    atomic_write_json(output_details_path, detail_results)
 
 
 # =========================================================
@@ -664,16 +1052,28 @@ def evaluate(
     max_rounds: int,
     seed: int,
     output_path: str,
+    output_details_path: str,
+    checkpoint_path: str,
     swissai_base_url: str,
     model_b_name: str,
 ) -> None:
     swiss_api_key = os.environ.get("CSCS_SERVING_API")
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
 
     if not swiss_api_key:
         raise RuntimeError("Missing environment variable: CSCS_SERVING_API")
-    if not openai_api_key:
-        raise RuntimeError("Missing environment variable: OPENAI_API_KEY")
+
+    run_config = build_run_config(
+        dataset_path=dataset_path,
+        swissai_models=swissai_models,
+        domains=domains,
+        samples_per_domain=samples_per_domain,
+        max_rounds=max_rounds,
+        seed=seed,
+        output_path=output_path,
+        output_details_path=output_details_path,
+        swissai_base_url=swissai_base_url,
+        model_b_name=model_b_name,
+    )
 
     raw_examples = load_dataset(dataset_path)
     usable_examples, skipped_stats = filter_usable_examples(raw_examples)
@@ -688,42 +1088,79 @@ def evaluate(
         seed=seed,
     )
 
+    base_summary_results = make_initial_summary_results(
+        config_for_output=run_config,
+        raw_examples_count=len(raw_examples),
+        usable_examples_count=len(usable_examples),
+        skipped_stats=skipped_stats,
+        evaluated_examples_count=len(selected),
+    )
+    base_detail_results = make_initial_detail_results(
+        config_for_output=run_config,
+        raw_examples_count=len(raw_examples),
+        usable_examples_count=len(usable_examples),
+        skipped_stats=skipped_stats,
+        evaluated_examples_count=len(selected),
+    )
+
+    if os.path.exists(checkpoint_path):
+        checkpoint_data = load_json_or_default(checkpoint_path, {})
+        validate_checkpoint_config(checkpoint_data, run_config)
+        print(f"Loaded checkpoint: {checkpoint_path}")
+    else:
+        checkpoint_data = make_initial_checkpoint(run_config, selected)
+        print(f"Creating new checkpoint: {checkpoint_path}")
+
+    summary_results, detail_results = rebuild_outputs_from_checkpoint(
+        checkpoint=checkpoint_data,
+        base_summary_results=base_summary_results,
+        base_detail_results=base_detail_results,
+    )
+
+    save_all_state(
+        checkpoint_path=checkpoint_path,
+        output_path=output_path,
+        output_details_path=output_details_path,
+        checkpoint_data=checkpoint_data,
+        summary_results=summary_results,
+        detail_results=detail_results,
+    )
+
     swiss_client = SwissAIClient(
         api_key=swiss_api_key,
         base_url=swissai_base_url,
     )
-    model_b_client = OpenAIModelBClient(api_key=openai_api_key)
-
-    all_results: Dict[str, Any] = {
-        "config": {
-            "dataset_path": dataset_path,
-            "swissai_models": swissai_models,
-            "domains": domains,
-            "samples_per_domain": samples_per_domain,
-            "max_rounds": max_rounds,
-            "seed": seed,
-            "swissai_base_url": swissai_base_url,
-            "model_b_name": model_b_name,
-        },
-        "dataset_stats": {
-            "raw_examples": len(raw_examples),
-            "usable_examples": len(usable_examples),
-            "skipped_examples": len(raw_examples) - len(usable_examples),
-            "skip_reasons": skipped_stats,
-        },
-        "models": {},
-    }
+    model_b_client = SwissAIModelBClient(
+        api_key=swiss_api_key,
+        base_url=swissai_base_url,
+    )
 
     total_examples = len(selected)
 
     for model_a in swissai_models:
         print(f"\n=== Evaluating model A: {model_a} ===")
-        model_results: List[Dict[str, Any]] = []
-        sum_example_score = 0.0
+
+        model_state = checkpoint_data["models"].setdefault(model_a, {
+            "completed_example_ids": [],
+            "results": [],
+            "done": False,
+        })
+
+        completed_ids = set(model_state.get("completed_example_ids", []))
+        model_results: List[Dict[str, Any]] = model_state.get("results", []) or []
+
+        if model_state.get("done") and len(completed_ids) >= total_examples:
+            print(f"Model {model_a} already completed in checkpoint, skipping.")
+            continue
 
         for idx, ex in enumerate(selected, start=1):
             ex_id = extract_example_id(ex)
             ex_domain = extract_domain(ex)
+
+            if ex_id in completed_ids:
+                print(f"[{idx}/{total_examples}] domain={ex_domain} sample_id={ex_id} -> already done, skip")
+                continue
+
             print(f"[{idx}/{total_examples}] domain={ex_domain} sample_id={ex_id}")
 
             transcript = simulate_attack_dialog(
@@ -742,36 +1179,55 @@ def evaluate(
             )
 
             model_results.append(result)
-            sum_example_score += result["example_score"]
+            completed_ids.add(ex_id)
 
-        final_score_100 = 100.0 * (sum_example_score / total_examples)
+            model_state["results"] = model_results
+            model_state["completed_example_ids"] = sorted(completed_ids)
+            model_state["done"] = len(completed_ids) >= total_examples
 
-        by_domain_scores = defaultdict(list)
-        for r in model_results:
-            by_domain_scores[r["domain"]].append(r["example_score"])
-
-        domain_summary = {}
-        for d, scores in by_domain_scores.items():
-            avg_score = sum(scores) / len(scores) if scores else 0.0
-            domain_summary[d] = {
-                "num_examples": len(scores),
-                "avg_example_score": avg_score,
-                "score_100": 100.0 * avg_score,
+            summary_results["models"][model_a] = summarize_model_results(model_results)
+            detail_results["models"][model_a] = {
+                "num_examples": len(model_results),
+                "examples": model_results,
             }
 
-        all_results["models"][model_a] = {
-            "final_score_100": final_score_100,
-            "num_examples": total_examples,
-            "domain_summary": domain_summary,
+            save_all_state(
+                checkpoint_path=checkpoint_path,
+                output_path=output_path,
+                output_details_path=output_details_path,
+                checkpoint_data=checkpoint_data,
+                summary_results=summary_results,
+                detail_results=detail_results,
+            )
+
+            current_score = summary_results["models"][model_a]["overall"]["score_100"]
+            print(
+                f"Saved checkpoint after sample_id={ex_id} | "
+                f"completed={len(completed_ids)}/{total_examples} | "
+                f"current_score={current_score:.2f}/100"
+            )
+
+        model_state["done"] = len(completed_ids) >= total_examples
+        summary_results["models"][model_a] = summarize_model_results(model_results)
+        detail_results["models"][model_a] = {
+            "num_examples": len(model_results),
             "examples": model_results,
         }
 
-        print(f"Model {model_a} final score: {final_score_100:.2f}/100")
+        save_all_state(
+            checkpoint_path=checkpoint_path,
+            output_path=output_path,
+            output_details_path=output_details_path,
+            checkpoint_data=checkpoint_data,
+            summary_results=summary_results,
+            detail_results=detail_results,
+        )
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, ensure_ascii=False, indent=2)
+        print(f"Model {model_a} final score: {summary_results['models'][model_a]['overall']['score_100']:.2f}/100")
 
-    print(f"\nSaved results to: {output_path}")
+    print(f"\nSaved checkpoint to: {checkpoint_path}")
+    print(f"Saved summary results to: {output_path}")
+    print(f"Saved detailed results to: {output_details_path}")
 
 
 # =========================================================
@@ -802,7 +1258,7 @@ def parse_args():
         "--samples-per-domain",
         type=int,
         default=25,
-        help="Number of samples per domain",
+        help="Number of samples per domain; use 0 or negative to evaluate all usable examples in each domain",
     )
     parser.add_argument(
         "--max-rounds",
@@ -819,7 +1275,17 @@ def parse_args():
     parser.add_argument(
         "--output",
         default="ab_eval_results.json",
-        help="Output results JSON path",
+        help="Output summary results JSON path",
+    )
+    parser.add_argument(
+        "--output-details",
+        default="ab_eval_results_detailed.json",
+        help="Output detailed per-example results JSON path",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint JSON path for resume. Default: <output-details>.checkpoint.json",
     )
     parser.add_argument(
         "--swissai-base-url",
@@ -828,8 +1294,8 @@ def parse_args():
     )
     parser.add_argument(
         "--model-b",
-        default="gpt-5.4",
-        help="OpenAI attacker model name",
+        default="meta-llama/Llama-3.3-70B-Instruct",
+        help="SwissAI attacker model name",
     )
 
     return parser.parse_args()
@@ -837,6 +1303,11 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+
+    checkpoint_path = args.checkpoint
+    if not checkpoint_path:
+        checkpoint_path = f"{args.output_details}.checkpoint.json"
+
     evaluate(
         dataset_path=args.dataset,
         swissai_models=args.model_a,
@@ -845,6 +1316,8 @@ if __name__ == "__main__":
         max_rounds=args.max_rounds,
         seed=args.seed,
         output_path=args.output,
+        output_details_path=args.output_details,
+        checkpoint_path=checkpoint_path,
         swissai_base_url=args.swissai_base_url,
         model_b_name=args.model_b,
     )
