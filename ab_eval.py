@@ -504,7 +504,7 @@ class SwissAIClient:
         self,
         model: str,
         messages: List[Dict[str, str]],
-        temperature: float = 0.6,
+        temperature: float = 0.1,
         max_tokens: int = 1200,
         retries: int = 3,
     ) -> str:
@@ -537,7 +537,7 @@ class OpenAIModelAClient:
         self,
         model: str,
         messages: List[Dict[str, str]],
-        temperature: float = 0.6,
+        temperature: float = 0.1,
         max_tokens: int = 1200,
         retries: int = 3,
     ) -> str:
@@ -575,7 +575,7 @@ class GeminiModelAClient:
         self,
         model: str,
         messages: List[Dict[str, str]],
-        temperature: float = 0.6,
+        temperature: float = 0.1,
         max_tokens: int = 1200,
         retries: int = 3,
     ) -> str:
@@ -606,7 +606,7 @@ class SwissAIModelBClient:
         model: str,
         system_prompt: str,
         messages: List[Dict[str, str]],
-        temperature: float = 0.7,
+        temperature: float = 0.1,
         max_tokens: int = 800,
         retries: int = 3,
     ) -> str:
@@ -835,7 +835,7 @@ def simulate_attack_dialog(
             a_reply = swiss_client.chat(
                 model=model_a_name,
                 messages=build_a_messages_from_transcript(a_system, transcript),
-                temperature=0.2,
+                temperature=0.1,
                 max_tokens=1200,
             ).strip()
 
@@ -853,7 +853,7 @@ def simulate_attack_dialog(
             a_msg = swiss_client.chat(
                 model=model_a_name,
                 messages=build_a_messages_from_transcript(a_system, transcript),
-                temperature=0.2,
+                temperature=0.1,
                 max_tokens=1200,
             ).strip()
 
@@ -872,7 +872,7 @@ def simulate_attack_dialog(
             model=model_b_name,
             system_prompt=b_system,
             messages=b_messages,
-            temperature=0.7,
+            temperature=0.1,
             max_tokens=500,
         ).strip()
 
@@ -884,7 +884,7 @@ def simulate_attack_dialog(
         a_msg = swiss_client.chat(
             model=model_a_name,
             messages=build_a_messages_from_transcript(a_system, transcript),
-            temperature=0.2,
+            temperature=0.1,
             max_tokens=1200,
         ).strip()
 

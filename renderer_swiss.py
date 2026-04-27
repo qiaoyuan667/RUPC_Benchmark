@@ -173,7 +173,7 @@ def call_llm(
     prompt: str,
     model: str = "Qwen/Qwen3.5-397B-A17B",
     max_output_tokens: int = 3000,
-    temperature: float = 0.6,
+    temperature: float = 0.1,
 ) -> str:
     response = get_client().chat.completions.create(
         model=model,
@@ -208,7 +208,7 @@ def call_llm_with_retry_and_fallback(
     model: str = "Qwen/Qwen3.5-397B-A17B",
     reasoning_effort: str = "medium",
     max_output_tokens: int = 3000,
-    temperature: float = 0.6,
+    temperature: float = 0.1,
     retries: int = 2,
     sleep_seconds: float = 0.8,
 ) -> Tuple[str, bool, Optional[str]]:

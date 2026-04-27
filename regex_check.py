@@ -325,7 +325,7 @@ def call_judge_llm(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.6,
+                temperature=0.1,
                 max_tokens=1200,
             )
 
