@@ -1,0 +1,534 @@
+{
+  "config": {
+    "dataset_path": "data/privacy_benchmark_rendered_repaired.json",
+    "swissai_models": [
+      "zai-org/GLM-4.7-Flash"
+    ],
+    "domains": [
+      "medical",
+      "recruitment",
+      "finance",
+      "education",
+      "customer_support"
+    ],
+    "samples_per_domain": 0,
+    "max_rounds": 6,
+    "seed": 42,
+    "swissai_base_url": "https://api.swissai.svc.cscs.ch/v1",
+    "model_b_name": "meta-llama/Llama-3.3-70B-Instruct"
+  },
+  "dataset_stats": {
+    "raw_examples": 825,
+    "usable_examples": 825,
+    "skipped_examples": 0,
+    "skip_reasons": {},
+    "evaluated_examples": 825
+  },
+  "models": {
+    "zai-org/GLM-4.7-Flash": {
+      "overall": {
+        "num_examples": 825,
+        "avg_example_score": 0.484009139009139,
+        "score_100": 48.4009139009139
+      },
+      "by_domain": {
+        "customer_support": {
+          "overall": {
+            "num_examples": 150,
+            "avg_example_score": 0.4332777777777777,
+            "score_100": 43.32777777777777
+          },
+          "by_privacy_level": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.47527777777777774,
+              "score_100": 47.52777777777777
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.3416666666666667,
+              "score_100": 34.166666666666664
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.4222222222222222,
+              "score_100": 42.22222222222222
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.36333333333333334,
+              "score_100": 36.333333333333336
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.5638888888888889,
+              "score_100": 56.388888888888886
+            }
+          },
+          "by_attack_strength": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.3055555555555555,
+              "score_100": 30.555555555555554
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.8805555555555556,
+              "score_100": 88.05555555555557
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.13333333333333333,
+              "score_100": 13.333333333333334
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.3,
+              "score_100": 30.0
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.5469444444444443,
+              "score_100": 54.694444444444436
+            }
+          }
+        },
+        "education": {
+          "overall": {
+            "num_examples": 150,
+            "avg_example_score": 0.5283809523809524,
+            "score_100": 52.83809523809524
+          },
+          "by_privacy_level": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.5599206349206349,
+              "score_100": 55.992063492063494
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.4255952380952381,
+              "score_100": 42.55952380952381
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.5740079365079365,
+              "score_100": 57.400793650793645
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.5371428571428571,
+              "score_100": 53.714285714285715
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.5452380952380953,
+              "score_100": 54.52380952380953
+            }
+          },
+          "by_attack_strength": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.42464285714285716,
+              "score_100": 42.464285714285715
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.6958333333333333,
+              "score_100": 69.58333333333333
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.41626984126984123,
+              "score_100": 41.62698412698413
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.24761904761904763,
+              "score_100": 24.761904761904763
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.8575396825396826,
+              "score_100": 85.75396825396825
+            }
+          }
+        },
+        "finance": {
+          "overall": {
+            "num_examples": 150,
+            "avg_example_score": 0.4338888888888889,
+            "score_100": 43.388888888888886
+          },
+          "by_privacy_level": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.45416666666666666,
+              "score_100": 45.416666666666664
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.4766666666666667,
+              "score_100": 47.66666666666667
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.43333333333333335,
+              "score_100": 43.333333333333336
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.45749999999999996,
+              "score_100": 45.74999999999999
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.3477777777777778,
+              "score_100": 34.77777777777778
+            }
+          },
+          "by_attack_strength": {
+            "1": {
+              "num_examples": 30,
+              "avg_example_score": 0.1,
+              "score_100": 10.0
+            },
+            "2": {
+              "num_examples": 30,
+              "avg_example_score": 0.9319444444444444,
+              "score_100": 93.19444444444443
+            },
+            "3": {
+              "num_examples": 30,
+              "avg_example_score": 0.03333333333333333,
+              "score_100": 3.3333333333333335
+            },
+            "4": {
+              "num_examples": 30,
+              "avg_example_score": 0.24166666666666667,
+              "score_100": 24.166666666666668
+            },
+            "5": {
+              "num_examples": 30,
+              "avg_example_score": 0.8625,
+              "score_100": 86.25
+            }
+          }
+        },
+        "medical": {
+          "overall": {
+            "num_examples": 175,
+            "avg_example_score": 0.5346666666666666,
+            "score_100": 53.46666666666666
+          },
+          "by_privacy_level": {
+            "1": {
+              "num_examples": 35,
+              "avg_example_score": 0.5095238095238095,
+              "score_100": 50.95238095238095
+            },
+            "2": {
+              "num_examples": 35,
+              "avg_example_score": 0.41904761904761906,
+              "score_100": 41.904761904761905
+            },
+            "3": {
+              "num_examples": 35,
+              "avg_example_score": 0.5852380952380952,
+              "score_100": 58.523809523809526
+            },
+            "4": {
+              "num_examples": 35,
+              "avg_example_score": 0.5880952380952381,
+              "score_100": 58.80952380952381
+            },
+            "5": {
+              "num_examples": 35,
+              "avg_example_score": 0.5714285714285714,
+              "score_100": 57.14285714285714
+            }
+          },
+          "by_attack_strength": {
+            "1": {
+              "num_examples": 35,
+              "avg_example_score": 0.4809523809523809,
+              "score_100": 48.09523809523809
+            },
+            "2": {
+              "num_examples": 35,
+              "avg_example_score": 0.7471428571428571,
+              "score_100": 74.71428571428571
+            },
+            "3": {
+              "num_examples": 35,
+              "avg_example_score": 0.26666666666666666,
+              "score_100": 26.666666666666668
+            },
+            "4": {
+              "num_examples": 35,
+              "avg_example_score": 0.4,
+              "score_100": 40.0
+            },
+            "5": {
+              "num_examples": 35,
+              "avg_example_score": 0.7785714285714286,
+              "score_100": 77.85714285714286
+            }
+          }
+        },
+        "recruitment": {
+          "overall": {
+            "num_examples": 200,
+            "avg_example_score": 0.4820436507936508,
+            "score_100": 48.20436507936508
+          },
+          "by_privacy_level": {
+            "1": {
+              "num_examples": 40,
+              "avg_example_score": 0.46319444444444446,
+              "score_100": 46.31944444444444
+            },
+            "2": {
+              "num_examples": 40,
+              "avg_example_score": 0.4833333333333333,
+              "score_100": 48.33333333333333
+            },
+            "3": {
+              "num_examples": 40,
+              "avg_example_score": 0.4229166666666667,
+              "score_100": 42.29166666666667
+            },
+            "4": {
+              "num_examples": 40,
+              "avg_example_score": 0.5363095238095238,
+              "score_100": 53.63095238095238
+            },
+            "5": {
+              "num_examples": 40,
+              "avg_example_score": 0.5044642857142857,
+              "score_100": 50.44642857142857
+            }
+          },
+          "by_attack_strength": {
+            "1": {
+              "num_examples": 40,
+              "avg_example_score": 0.1375,
+              "score_100": 13.750000000000002
+            },
+            "2": {
+              "num_examples": 40,
+              "avg_example_score": 0.7241666666666667,
+              "score_100": 72.41666666666667
+            },
+            "3": {
+              "num_examples": 40,
+              "avg_example_score": 0.55125,
+              "score_100": 55.125
+            },
+            "4": {
+              "num_examples": 40,
+              "avg_example_score": 0.175,
+              "score_100": 17.5
+            },
+            "5": {
+              "num_examples": 40,
+              "avg_example_score": 0.8223015873015873,
+              "score_100": 82.23015873015873
+            }
+          }
+        }
+      },
+      "overall_by_privacy_level": {
+        "1": {
+          "num_examples": 165,
+          "avg_example_score": 0.49116402116402114,
+          "score_100": 49.116402116402114
+        },
+        "2": {
+          "num_examples": 165,
+          "avg_example_score": 0.4322294372294372,
+          "score_100": 43.22294372294372
+        },
+        "3": {
+          "num_examples": 165,
+          "avg_example_score": 0.4865873015873016,
+          "score_100": 48.658730158730165
+        },
+        "4": {
+          "num_examples": 165,
+          "avg_example_score": 0.5016666666666667,
+          "score_100": 50.16666666666667
+        },
+        "5": {
+          "num_examples": 165,
+          "avg_example_score": 0.5083982683982684,
+          "score_100": 50.83982683982684
+        }
+      },
+      "overall_by_attack_strength": {
+        "1": {
+          "num_examples": 165,
+          "avg_example_score": 0.2862987012987013,
+          "score_100": 28.629870129870127
+        },
+        "2": {
+          "num_examples": 165,
+          "avg_example_score": 0.7901010101010102,
+          "score_100": 79.01010101010102
+        },
+        "3": {
+          "num_examples": 165,
+          "avg_example_score": 0.2961904761904762,
+          "score_100": 29.619047619047624
+        },
+        "4": {
+          "num_examples": 165,
+          "avg_example_score": 0.2707792207792208,
+          "score_100": 27.07792207792208
+        },
+        "5": {
+          "num_examples": 165,
+          "avg_example_score": 0.7766762866762867,
+          "score_100": 77.66762866762868
+        }
+      },
+      "overall_by_privacy_and_attack": {
+        "1": {
+          "1": {
+            "num_examples": 33,
+            "avg_example_score": 0.23737373737373738,
+            "score_100": 23.737373737373737
+          },
+          "2": {
+            "num_examples": 33,
+            "avg_example_score": 0.773989898989899,
+            "score_100": 77.3989898989899
+          },
+          "3": {
+            "num_examples": 33,
+            "avg_example_score": 0.37373737373737376,
+            "score_100": 37.37373737373738
+          },
+          "4": {
+            "num_examples": 33,
+            "avg_example_score": 0.3181818181818182,
+            "score_100": 31.818181818181817
+          },
+          "5": {
+            "num_examples": 33,
+            "avg_example_score": 0.7525372775372775,
+            "score_100": 75.25372775372774
+          }
+        },
+        "2": {
+          "1": {
+            "num_examples": 33,
+            "avg_example_score": 0.1884920634920635,
+            "score_100": 18.849206349206348
+          },
+          "2": {
+            "num_examples": 33,
+            "avg_example_score": 0.7954545454545454,
+            "score_100": 79.54545454545455
+          },
+          "3": {
+            "num_examples": 33,
+            "avg_example_score": 0.18686868686868688,
+            "score_100": 18.68686868686869
+          },
+          "4": {
+            "num_examples": 33,
+            "avg_example_score": 0.22727272727272727,
+            "score_100": 22.727272727272727
+          },
+          "5": {
+            "num_examples": 33,
+            "avg_example_score": 0.763059163059163,
+            "score_100": 76.3059163059163
+          }
+        },
+        "3": {
+          "1": {
+            "num_examples": 33,
+            "avg_example_score": 0.329004329004329,
+            "score_100": 32.900432900432904
+          },
+          "2": {
+            "num_examples": 33,
+            "avg_example_score": 0.7674242424242425,
+            "score_100": 76.74242424242425
+          },
+          "3": {
+            "num_examples": 33,
+            "avg_example_score": 0.3373737373737374,
+            "score_100": 33.73737373737374
+          },
+          "4": {
+            "num_examples": 33,
+            "avg_example_score": 0.19696969696969696,
+            "score_100": 19.696969696969695
+          },
+          "5": {
+            "num_examples": 33,
+            "avg_example_score": 0.8021645021645022,
+            "score_100": 80.21645021645021
+          }
+        },
+        "4": {
+          "1": {
+            "num_examples": 33,
+            "avg_example_score": 0.3,
+            "score_100": 30.0
+          },
+          "2": {
+            "num_examples": 33,
+            "avg_example_score": 0.8232323232323233,
+            "score_100": 82.32323232323233
+          },
+          "3": {
+            "num_examples": 33,
+            "avg_example_score": 0.32539682539682535,
+            "score_100": 32.53968253968254
+          },
+          "4": {
+            "num_examples": 33,
+            "avg_example_score": 0.26515151515151514,
+            "score_100": 26.515151515151516
+          },
+          "5": {
+            "num_examples": 33,
+            "avg_example_score": 0.7945526695526696,
+            "score_100": 79.45526695526695
+          }
+        },
+        "5": {
+          "1": {
+            "num_examples": 33,
+            "avg_example_score": 0.37662337662337664,
+            "score_100": 37.66233766233766
+          },
+          "2": {
+            "num_examples": 33,
+            "avg_example_score": 0.7904040404040403,
+            "score_100": 79.04040404040403
+          },
+          "3": {
+            "num_examples": 33,
+            "avg_example_score": 0.25757575757575757,
+            "score_100": 25.757575757575758
+          },
+          "4": {
+            "num_examples": 33,
+            "avg_example_score": 0.3463203463203463,
+            "score_100": 34.63203463203463
+          },
+          "5": {
+            "num_examples": 33,
+            "avg_example_score": 0.7710678210678211,
+            "score_100": 77.1067821067821
+          }
+        }
+      }
+    }
+  }
+}
