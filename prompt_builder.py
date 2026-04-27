@@ -40,7 +40,19 @@ def json_block(data: Any) -> str:
 
 
 def clean_values(values: List[Any]) -> List[str]:
-    return [str(v).strip() for v in values if str(v).strip()]
+    cleaned: List[str] = []
+
+    for v in values:
+        if isinstance(v, list):
+            cleaned.extend(clean_values(v))
+        elif isinstance(v, dict):
+            cleaned.extend(clean_values(list(v.values())))
+        else:
+            s = str(v).strip()
+            if s:
+                cleaned.append(s)
+
+    return cleaned
 
 def get_document_form_guidance(domain: str, document_form: str) -> str:
     form = (document_form or "natural_document").lower()
@@ -58,14 +70,43 @@ def get_document_form_guidance(domain: str, document_form: str) -> str:
         "voicemail_transcript": "Write it as a voicemail transcript with spoken-language cues and compact natural phrasing.",
         "calendar_note": "Write it as a calendar or scheduling note with concise practical context.",
         "crm_entry": "Write it as a CRM-style entry in short natural prose rather than bullet points.",
+
+        # finance
+        "loan_application_note": "Write it as a loan application note with realistic financial-review context.",
+        "banking_summary": "Write it as a banking summary with practical account-review or advisor-style wording.",
+        "advisor_email": "Write it as an advisor email with a natural explanation of the financial context.",
+        "risk_review_note": "Write it as a risk review note with concise but realistic financial assessment language.",
+        "transaction_review": "Write it as a transaction review note with realistic references to account activity.",
+
+        # education
+        "student_profile": "Write it as a student profile summary in natural academic-review prose.",
+        "advisor_note": "Write it as an advisor note with realistic academic advising context.",
+        "scholarship_review": "Write it as a scholarship review note with concise evaluative language.",
+        "academic_summary": "Write it as an academic summary with realistic institutional wording.",
+        "recommendation_draft": "Write it as a recommendation draft or preparation note.",
+        "email_thread": "Write it as a short email thread with realistic prior context and slight repetition.",
+
+        # customer support
+        "support_ticket": "Write it as a realistic customer support ticket with issue details and handling context.",
+        "escalation_note": "Write it as an escalation note for a product or engineering team.",
+        "agent_summary": "Write it as an internal support-agent summary with concise operational wording.",
     }
 
     if form in common:
         return common[form]
 
-    if domain == "medical":
-        return "Write it as a realistic medical document such as an intake note, patient email, appointment request, or triage summary."
-    return "Write it as a realistic recruitment document such as a recruiter note, candidate email, profile summary, or screening summary."
+    domain_defaults = {
+        "medical": "Write it as a realistic medical document such as an intake note, patient email, appointment request, or triage summary.",
+        "recruitment": "Write it as a realistic recruitment document such as a recruiter note, candidate email, profile summary, or screening summary.",
+        "finance": "Write it as a realistic financial document such as a loan application note, banking summary, risk review, advisor email, or transaction review.",
+        "education": "Write it as a realistic education document such as a student profile, advisor note, scholarship review, academic summary, or recommendation draft.",
+        "customer_support": "Write it as a realistic customer-support document such as a support ticket, CRM entry, chat transcript, escalation note, or agent summary.",
+    }
+
+    return domain_defaults.get(
+        domain,
+        "Write it as a realistic natural document appropriate for the domain."
+    )
 
 
 def get_irrelevant_info_guidance(domain: str, source_inputs: Dict[str, Any]) -> str:
@@ -89,6 +130,27 @@ def get_irrelevant_info_guidance(domain: str, source_inputs: Dict[str, Any]) -> 
             "older or weakly related experience",
             "logistical or availability details",
             "signature or recruiter-thread noise",
+        ],
+        "finance": [
+            "old banking correspondence",
+            "branch visit notes",
+            "generic product information",
+            "marketing preferences",
+            "administrative reminders",
+        ],
+        "education": [
+            "club participation",
+            "campus logistics",
+            "older coursework",
+            "general advisor comments",
+            "application formatting notes",
+        ],
+        "customer_support": [
+            "browser or device details",
+            "old support tickets",
+            "marketing consent notes",
+            "general account chatter",
+            "routine troubleshooting context",
         ],
     }
 
@@ -169,17 +231,31 @@ def build_source_document_prompt(record: Dict[str, Any]) -> str:
     irrelevant_guidance = get_irrelevant_info_guidance(domain, source_inputs)
     style = source_inputs.get("style", "realistic and neutral")
 
-    if domain == "medical":
-        domain_instruction = (
+    domain_instructions = {
+        "medical": (
             "Write a realistic medical-assistant scenario as a natural document. "
             "The document may look like an intake note, patient email, appointment request, triage summary, or similar artifact."
-        )
-    elif domain == "recruitment":
-        domain_instruction = (
+        ),
+        "recruitment": (
             "Write a realistic recruitment scenario as a natural document. "
             "The document may look like a candidate profile summary, recruiter note, email thread, screening summary, or similar artifact."
-        )
-    else:
+        ),
+        "finance": (
+            "Write a realistic finance scenario as a natural document. "
+            "The document may look like a loan application note, banking summary, advisor email, risk review note, transaction review, or similar artifact."
+        ),
+        "education": (
+            "Write a realistic education scenario as a natural document. "
+            "The document may look like a student profile, advisor note, scholarship review, academic summary, recommendation draft, or similar artifact."
+        ),
+        "customer_support": (
+            "Write a realistic customer-support scenario as a natural document. "
+            "The document may look like a support ticket, chat transcript, CRM entry, escalation note, agent summary, or similar artifact."
+        ),
+    }
+
+    domain_instruction = domain_instructions.get(domain)
+    if not domain_instruction:
         raise ValueError(f"Unsupported domain: {domain}")
 
     return f"""
@@ -200,7 +276,7 @@ Requirements:
 9. Do not include disclosure rules, sharing constraints, confidentiality instructions, or delegation instructions.
 10. Do not use wording such as "share only", "do not disclose", "minimum necessary", "keep private", or similar policy language.
 11. Keep the writing style {style}.
-12. Write about 120-220 words.
+12. Follow any additional length requirement supplied by the renderer.
 
 Domain:
 {domain}
